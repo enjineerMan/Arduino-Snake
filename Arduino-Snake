@@ -1,0 +1,254 @@
+/*
+  Snake game created with MAX7219, an analog joystick, and Arduino Uno. 
+  Wire according to this diagram: https://drive.google.com/file/d/17QOjLfWwbNSAX5XH9YwSGgpFVhrPxc-w/view?usp=sharing
+  
+  Video demonstration: https://youtu.be/n72vFCk4SBg
+  
+  Author:  David Wang <david.wang236@gmail.com>
+  Date:    15 March 2020
+  License: WTFPL (http://www.wtfpl.net/)
+ */
+ 
+  //position of columns are defined with 0 starting on the right, and an 8 digit code from up to down
+    //position of rows are defined with 0 starting on the top, and an 8 digit code from right to left 
+    //hold joystick with wires facing to the left
+    #include <LedControl.h>
+    LedControl lc=LedControl(12,10,11,1);
+    unsigned long delaytime1=500;
+    unsigned long delaytime2=50;
+
+    const int SW_pin = 2; // digital pin connected to switch output
+    const int X_pin = 0; // analog pin connected to X output
+    const int Y_pin = 1; // analog pin connected to Y output
+    
+    int dir; //direction of snake given by 0 - up, 1 - right, 2 - down, 3 - left
+    //starting position
+    int y=5; 
+    int x=7; 
+    //food starting position
+    int foodY=5;
+    int foodX=2;
+    int snakeLength=1;
+
+    class Coordinates{
+      private:
+      int x_coordinate;
+      int y_coordinate;
+      bool visible;
+      public:
+      int get_x()
+      {
+        return x_coordinate;
+      }
+      int get_y()
+      {
+        return y_coordinate;
+      }
+      bool is_visible()
+      {
+        return visible;
+      }
+      void set_x(int ex)
+      {
+        x_coordinate=ex;
+      }
+      void set_y(int wy)
+      {
+        y_coordinate=wy;
+      }
+      void set_visible(bool lit)
+      {
+        visible=lit;
+      }
+      
+     Coordinates()
+     {
+      x_coordinate=9;//arbitrary non-existent coordinates
+      y_coordinate=9;
+      visible=0;
+     }
+    };
+    
+    Coordinates path[256]; //contains path of snake
+    void setup() 
+    {
+      lc.shutdown(0,false); //wakeup from powersaving mode
+      lc.setIntensity(0,8); //medium intensity
+      lc.clearDisplay(0);
+      lc.setLed(0,foodX,foodY,true);
+      delay(delaytime1);
+      dir=1;
+
+      //joystick configs
+      pinMode(SW_pin, INPUT);
+      digitalWrite(SW_pin, HIGH);
+      Serial.begin(9600);   
+    }
+
+    int prev_dir;
+    void play() //defines behaviour of snake
+    {
+      if(analogRead(Y_pin)<100) //joystick controls (joystick in x and y directions have values from approx 0-1000)
+      {
+        if(prev_dir!=2) //prevents snake from moving backwards directly
+        {
+          dir=0; //up
+        }      
+      }else if(analogRead(Y_pin)>700)
+      {
+        if(prev_dir!=0)
+        {
+         dir=2; //down
+        }
+      }else if(analogRead(X_pin)<100)
+      {
+       if(prev_dir!=1)
+       {
+        dir=3; //left
+       }
+      }else if(analogRead(X_pin)>700)
+      {
+        if(prev_dir!=3)
+        {
+         dir=1; //right
+        }
+      }
+      //makes snake move towards direction it is facing
+      if(dir==0)
+      {
+        y--;
+      }
+      if(dir==1)
+      {
+        x--;
+      }
+      if(dir==2)
+      {
+        y++;
+      }
+      if(dir==3)
+      {
+        x++;
+      }
+      prev_dir=dir;
+      delay(delaytime1); //apply the change in position to the led    
+    }
+  
+    
+    int k=0;
+    Coordinates add;
+    void loop()
+    {
+      //check for duplicate coordinates in the array that are both lit (checks if the snake hits itself)
+      for(int i=0; i<256;i++)
+      {
+        for(int j=0;j<256;j++)
+        {
+          if(j!=i&&path[j].is_visible()&&path[i].is_visible())
+          {
+            if(path[j].get_x()==path[i].get_x()&&path[j].get_y()==path[i].get_y()) //if two visible coordinates exist at different locations in the array but identical locations on the LED then,
+            {
+                for(int i=0; i<5;i++) //light all LEDs on and off 5 times
+                {
+                  for(int k=0;k<8;k++)
+                  {
+                    for(int l=0;l<8;l++)
+                    {
+                      lc.setLed(0,k,l,true);
+                    }
+                  }
+                  delay(delaytime1);
+                  for(int k=0;k<8;k++)
+                  {
+                    for(int l=0;l<8;l++)
+                    {
+                      lc.setLed(0,k,l,false);       
+                    }
+                  }
+                  delay(delaytime1);
+                }
+                while(true) //stops the program
+                {
+                  
+                }
+            }
+          }
+        }
+      }
+
+       add.set_x(x); //updates current position of snake
+       add.set_y(y);
+      add.set_visible(true);
+    //////////////////////////////////////////////////////////////////////////////////////////////////// Array events
+      int numReal=0; //number of consecutive visible coordinates in array
+      path[k]=add; //add the new position of snakehead to array
+
+      for(int i=0; i<256;i++)
+      {
+        if(path[i].is_visible()) //if an existent coordinate is encountered, increment counter
+        {
+          numReal++;
+        }else
+        {
+          numReal=0; //if non-existent coordinate is encountered, reset counter
+        }
+        if(numReal==(snakeLength+1)) //if the snakeLength has exceeded its maximum capacity in the array, define the first existent element of the array as non-existent, erasing the path behind the snake
+        {
+          for(int j=0; j<256;j++)
+          {
+            if(path[j].is_visible())
+            {
+              path[j].set_visible(0);
+              break;
+            }
+          }
+          break;
+        }
+      }
+      for(int i=0; i<256;i++) //iterate through the array and project the snake onto the led screen
+      {
+        if(path[i].is_visible())
+        {
+          lc.setLed(0,path[i].get_x(),path[i].get_y(),true);
+        }else
+        {  
+            lc.setLed(0,path[i].get_x(),path[i].get_y(),false);
+            if(foodX==path[i].get_x()&&foodY==path[i].get_y())
+            {
+              lc.setLed(0,path[i].get_x(),path[i].get_y(),true);
+            }
+        }
+        
+      }
+      k++; //position in array
+   /////////////////////////////////////////////////////////////////////////////////////////////////////   
+
+      play();
+      if((foodY==y)&&(foodX==x)) //if the snake encounters food, respawn the food and increase snake length
+      {
+        snakeLength++;
+        foodY=random(0,8);
+        foodX=random(0,8);
+        
+        for(int i=0; i<256;i++) //if food spawns on top of snake, respawn at different location
+        {
+          if(path[i].get_x()==foodX&&path[i].get_y()==foodY&&path[i].is_visible())
+          {
+            foodY=random(0,8);
+            foodX=random(0,8);
+            for(int i=0; i<256;i++)
+            {
+               if(path[i].get_x()==foodX&&path[i].get_y()==foodY&&path[i].is_visible())
+               {
+                foodY=random(0,8);
+                foodX=random(0,8);
+               }
+            }
+            
+          }
+        }
+        
+        lc.setLed(0,foodX,foodY,true);
+        
+      }
+    }
